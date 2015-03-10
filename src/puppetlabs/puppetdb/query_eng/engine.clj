@@ -15,6 +15,8 @@
             [puppetlabs.puppetdb.query.paging :as paging]
             [clojure.tools.logging :as log]
             [puppetlabs.puppetdb.honeysql :as h]
+            [honeysql.helpers :as hsql]
+            [honeysql.types :as htypes]
             [honeysql.core :as hcore]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -24,7 +26,7 @@
                   subquery? entity supports-extract?])
 (defrecord BinaryExpression [operator column value])
 (defrecord RegexExpression [column value])
-(defrecord ArrayRegexExpression [table alias column value])
+(defrecord ArrayRegexExpression [table column value])
 (defrecord NullExpression [column null?])
 (defrecord ArrayBinaryExpression [column value])
 (defrecord InExpression [column subquery])
@@ -653,29 +655,26 @@
   (-plan->sql [query] "Given the `query` plan node, convert it to a SQL string"))
 
 (defn parenthize
-  "Wrap `s` in parens if `wrap-in-parens?`"
-  [wrap-in-parens? s]
-  (if wrap-in-parens?
-    (str " ( " s " ) ")
-    s))
+  "Wrap `s` in parens"
+  [s]
+  (str " ( " s " ) "))
 
 (extend-protocol SQLGen
   Query
   (-plan->sql [query]
-    (let [alias (:alias query)
-          has-where? (boolean (:where query))]
-      (parenthize
-       (:subquery? query)
-       (format "SELECT %s FROM ( %s ) AS %s %s"
-               (if (empty? (:projected-fields query)) 
-                 "*"
-                 (str/join ", " (map #(format "%s.%s" alias %)
-                                     (sort (:projected-fields query)))))
-               (sql-from-query query)
-               (:alias query)
-               (if has-where?
-                 (format "WHERE %s" (-plan->sql (:where query)))
-                 "")))))
+    (let [has-where? (boolean (:where query))
+          has-projections? (not (empty? (:projected-fields query)))
+          update-when (fn [m pred ks f]
+                        (if pred
+                          (update-in m ks f)
+                          m))
+          sql (-> query
+                  (update-when has-where? [:selection] #(hsql/merge-where % (htypes/raw (-plan->sql (:where query)))))
+                  (update-when has-projections? [:projections] #(select-keys % (:projected-fields query)))
+                  sql-from-query)]
+      (if (:subquery? query)
+        (parenthize sql)
+        sql)))
 
   InExpression
   (-plan->sql [expr]
@@ -704,7 +703,7 @@
 
   ArrayRegexExpression
   (-plan->sql [expr]
-    (su/sql-regexp-array-match (:table expr) (:alias expr) (:column expr)))
+    (su/sql-regexp-array-match (:table expr) (:column expr)))
 
   NullExpression
   (-plan->sql [expr]
@@ -716,11 +715,11 @@
 
   AndExpression
   (-plan->sql [expr]
-    (parenthize true (str/join " AND " (map -plan->sql (:clauses expr)))))
+    (parenthize (str/join " AND " (map -plan->sql (:clauses expr)))))
 
   OrExpression
   (-plan->sql [expr]
-    (parenthize true (str/join " OR " (map -plan->sql (:clauses expr)))))
+    (parenthize (str/join " OR " (map -plan->sql (:clauses expr)))))
 
   NotExpression
   (-plan->sql [expr]
@@ -1021,7 +1020,6 @@
               (case col-type
                 :array
                 (map->ArrayRegexExpression {:table (:source-table query-rec)
-                                            :alias (:alias query-rec)
                                             :column column
                                             :value value})
 
