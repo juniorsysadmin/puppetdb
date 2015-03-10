@@ -609,8 +609,8 @@
 (defn projectable-fields
   "Returns a list of projectable fields from a query record.
 
-  Fields marked as :query-only? true are unable to be projected and thus are
-  excluded."
+   Fields marked as :query-only? true are unable to be projected and thus are
+   excluded."
   [{:keys [projections]}]
   (->> projections
        (remove (comp :query-only? val))
@@ -1061,10 +1061,7 @@
   (let [plan-node (user-node->plan-node query-rec user-query)
         projections (projectable-fields query-rec)]
     (if (instance? Query plan-node)
-      (-> plan-node
-          (update-in [:projected-fields] #(->> %
-                                               (filter (set projections))
-                                               (into []))))
+      plan-node
       (-> query-rec
           (assoc :where plan-node)
           (assoc :paging-options paging-options)
@@ -1145,10 +1142,10 @@
             ; For in-extract operator validation, please see annotate-with-context function
             [["extract" field & _]]
             (let [query-context (:query-context (meta node))
-                  qfields (queryable-fields query-context)
+                  extractable-fields (projectable-fields query-context)
                   column-validation-message (validate-query-operation-fields
                                               field
-                                              qfields
+                                              extractable-fields
                                               (:alias query-context)
                                               "Can't extract" "")]
               (when column-validation-message
