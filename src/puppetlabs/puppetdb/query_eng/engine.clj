@@ -23,7 +23,7 @@
 ;;; Plan - functions/transformations of the internal query plan
 
 (defrecord Query [projections selection source-table alias where
-                  subquery? entity supports-extract?])
+                  subquery? entity late-project?])
 (defrecord BinaryExpression [operator column value])
 (defrecord RegexExpression [column value])
 (defrecord ArrayRegexExpression [table column value])
@@ -88,8 +88,7 @@
 
                :source-table "certnames"
                :alias "nodes"
-               :subquery? false
-               :supports-extract? true}))
+               :subquery? false}))
 
 (def resource-params-query
   "Query for the resource-params query, mostly used as a subquery"
@@ -106,8 +105,7 @@
 
                :source-table "resource_params"
                :alias "resource_params"
-               :subquery? false
-               :supports-extract? true}))
+               :subquery? false}))
 
 (def fact-paths-query
   "Query for the resource-params query, mostly used as a subquery"
@@ -124,8 +122,7 @@
 
                :source-table "fact_paths"
                :alias "fact_paths"
-               :subquery? false
-               :supports-extract? true}))
+               :subquery? false}))
 
 (def facts-query
   "Query structured facts."
@@ -179,7 +176,7 @@
                :source-table "facts"
                :entity :facts
                :subquery? false
-               :supports-extract? false}))
+               :late-project? true}))
 
 (def fact-contents-query
   "Query for fact nodes"
@@ -228,7 +225,7 @@
                :alias "fact_nodes"
                :source-table "facts"
                :subquery? false
-               :supports-extract? false}))
+               :late-project? true}))
 
 
 (def reports-query
@@ -436,8 +433,7 @@
                                        [:= :rpc.resource :cr.resource]]}
 
                :alias "resources"
-               :subquery? false
-               :supports-extract? true}))
+               :subquery? false}))
 
 (def report-events-query
   "Query for the top level reports entity"
@@ -510,7 +506,6 @@
                :alias "events"
                :subquery? false
                :entity :events
-               :supports-extract? true
                :source-table "resource_events"}))
 
 (def latest-report-query
@@ -524,8 +519,7 @@
 
                :alias "latest_report"
                :subquery? false
-               :source-table "latest_report"
-               :supports-extract? true}))
+               :source-table "latest_report"}))
 
 (def environments-query
   "Basic environments query, more useful when used with subqueries"
@@ -536,7 +530,6 @@
 
                :alias "environments"
                :subquery? false
-               :supports-extract? true
                :source-table "environments"}))
 
 (def factsets-query
@@ -589,8 +582,7 @@
                :alias "factsets"
                :entity :factsets
                :source-table "factsets"
-               :subquery? false
-               :supports-extract? false}))
+               :subquery? false}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Conversion from plan to SQL
@@ -944,9 +936,9 @@
   (if (or (nil? expr)
           (not (subquery-expression? expr)))
     (let [qr (assoc query-rec :where (user-node->plan-node query-rec expr))]
-      (if (:supports-extract? query-rec)
-        (assoc qr :projected-fields column-list)
-        (assoc qr :late-projected-fields column-list)))
+      (if (:late-project? query-rec)
+        (assoc qr :late-projected-fields column-list)
+        (assoc qr :projected-fields column-list)))
     (let [[subquery-name & subquery-expression] expr]
       (assoc (user-query->logical-obj subquery-name)
         :projected-fields column-list
