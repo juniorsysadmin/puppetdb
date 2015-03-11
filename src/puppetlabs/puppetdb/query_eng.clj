@@ -39,9 +39,10 @@
 
 (defn expand-paging-options
   [options entity]
-  (if (= :events entity)
-    (list (first options) (assoc (second options) :expand "foo"))
-    (assoc options :expand? "foo")))
+  (let [pg? (scf-utils/postgres?)]
+    (if (= :events entity)
+      (list (first options) (assoc (second options) :expand? pg?))
+      (assoc options :expand? pg?))))
 
 (defn stream-query-result
   "Given a query, and database connection, return a Ring response with the query
