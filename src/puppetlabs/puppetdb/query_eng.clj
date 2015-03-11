@@ -29,6 +29,20 @@
   (fn [_ _ _]
     f))
 
+;; TODO this is bad workaround because testing on this branch is currently
+;; broken. It should be fixed before it gets merged.
+;; The issue is that the events endpoint takes both query-options and
+;; paging-options, and we're currently handling that case by passing it along
+;; as a vector. We should instead do something like passing an 'options' map
+;; {:paging-options :query-options}, or possibly just generalize it to options
+;; and combine the maps in the events case.
+
+(defn expand-paging-options
+  [options entity]
+  (if (= :events entity)
+    (list (first options) (assoc (second options) :expand "foo"))
+    (assoc options :expand? "foo")))
+
 (defn stream-query-result
   "Given a query, and database connection, return a Ring response with the query
   results.
@@ -50,7 +64,7 @@
           :edges [edges/query->sql edges/munge-result-rows]
           :catalogs [catalogs/query->sql catalogs/munge-result-rows])]
     (jdbc/with-transacted-connection db
-      (let [paging-options-with-expand (assoc paging-options :expand? (scf-utils/postgres?))
+      (let [paging-options-with-expand (expand-paging-options paging-options entity)
             {[sql & params] :results-query
              count-query :count-query
              projected-fields :projected-fields} (query->sql version query
